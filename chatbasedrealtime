@@ -1,0 +1,57 @@
+import socket
+        with clients_lock:
+            nickname = clients.pop(sock, None)
+        try:
+            sock.close()
+        except Exception:
+            pass
+        if nickname:
+            leave_msg = f"[{timestamp()}] * {nickname} left the chat\n"
+            print(leave_msg, end='')
+            broadcast(leave_msg)
+
+def accept_loop():
+    global running
+    while running:
+        try:
+            client_sock, addr = server_sock.accept()
+            client_sock.settimeout(600)
+            threading.Thread(target=handle_client, args=(client_sock, addr), daemon=True).start()
+        except OSError:
+            break
+        except Exception as e:
+            print(f"Accept error: {e}")
+
+
+def shutdown(signum=None, frame=None):
+    global running
+    running = False
+    if server_sock:
+        try:
+            server_sock.close()
+        except Exception:
+            pass
+    with clients_lock:
+        for s in list(clients.keys()):
+            try:
+                s.sendall(b"Server shutting down. Bye!\n")
+                s.close()
+            except Exception:
+                pass
+        clients.clear()
+    print("\nServer stopped.")
+    sys.exit(0)
+
+if __name__ == '__main__':
+    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
+
+    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_sock.bind((HOST, PORT))
+    server_sock.listen(100)
+    print(f"Chat server listening on {HOST}:{PORT} … (Ctrl+C to stop)")
+
+    accept_thread = threading.Thread(target=accept_loop, daemon=True)
+    accept_thread.start()
+    accept_thread.join()
